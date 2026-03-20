@@ -126,8 +126,8 @@ const IS_GAS = (typeof google !== 'undefined' && typeof google.script !== 'undef
 
 // ── Session ID — baca dari URL parameter ─────────────────────
 const SESSION_ID = new URLSearchParams(window.location.search).get('sid') || '';
-const ANTHROPIC_API_KEY = ''; // <-- ISI API KEY ANDA DI SINI
-const GAS_URL = ''; // <-- ISI URL DEPLOYMENT GAS ANDA DI SINI
+// API Key disimpan aman di GAS — tidak perlu di sini
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwENuNHnMcjxOKdqeLx32WMCZPaq5ez9AIqOyKERTb5mpRGXPKWe4NfKcldbGW9aEqLkA/exec';
 
 // ── State ─────────────────────────────────────────────────────
 let sessionData  = null;
@@ -403,16 +403,8 @@ Buat ringkasan sesi dalam format JSON dengan struktur PERSIS berikut (tanpa teks
 Gunakan tanda | (pipe) sebagai pemisah antara poin-poin dalam keyInsights dan commitments.
 Maksimal 3 poin per field. Bahasa Indonesia. Langsung JSON saja, tanpa penjelasan.`;
 
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514', max_tokens: 800,
-      messages: [{ role: 'user', content: summaryPrompt }]
-    })
-  });
-  const data = await resp.json();
-  const raw  = data.content?.[0]?.text || '{}';
+  const r = await callGAS('proxyClaudeSummary', summaryPrompt);
+  const raw = r.success ? (r.text || '{}') : '{}';
   try {
     const clean = raw.replace(/```json|```/g,'').trim();
     const parsed = JSON.parse(clean);
@@ -478,35 +470,16 @@ function showSummaryScreen(s) {
   app.appendChild(summary);
 }
 
-// ── Claude API call ───────────────────────────────────────────
+// ── Claude API call — via GAS proxy (API key aman di server) ──
 async function callClaude(msgs, systemPrompt, isOpening = false) {
   const payload = {
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 600,
-    system: systemPrompt,
-    messages: isOpening
-      ? [{ role: 'user', content: 'Mulai sesi coaching.' }]
-      : msgs
+    systemPrompt,
+    isOpening,
+    messages: isOpening ? [] : msgs
   };
-
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify(payload)
-  });
-
-  if (!resp.ok) {
-    const err = await resp.json();
-    throw new Error(err.error?.message || 'Claude API error');
-  }
-
-  const data = await resp.json();
-  return data.content?.[0]?.text || 'Maaf, tidak ada respons.';
+  const r = await callGAS('proxyClaudeChat', JSON.stringify(payload));
+  if (!r.success) throw new Error(r.error || 'Claude error');
+  return r.text;
 }
 
 // ── GAS bridge ───────────────────────────────────────────────
