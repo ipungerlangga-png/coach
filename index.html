@@ -127,7 +127,7 @@ const IS_GAS = (typeof google !== 'undefined' && typeof google.script !== 'undef
 // ── Session ID — baca dari URL parameter ─────────────────────
 const SESSION_ID = new URLSearchParams(window.location.search).get('sid') || '';
 // API Key disimpan aman di GAS — tidak perlu di sini
-const GAS_URL = 'https://script.google.com/macros/u/0/s/AKfycbwENuNHnMcjxOKdqeLx32WMCZPaq5ez9AIqOyKERTb5mpRGXPKWe4NfKcldbGW9aEqLkA/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwENuNHnMcjxOKdqeLx32WMCZPaq5ez9AIqOyKERTb5mpRGXPKWe4NfKcldbGW9aEqLkA/exec';
 
 // ── State ─────────────────────────────────────────────────────
 let sessionData  = null;
@@ -490,40 +490,21 @@ async function callClaude(msgs, systemPrompt, isOpening = false) {
 // ── GAS bridge ───────────────────────────────────────────────
 function callGAS(fn, ...args) {
   return new Promise((resolve, reject) => {
-    const cbName = 'cb_' + fn + '_' + Date.now();
-    const url = new URL(GAS_URL);
-    url.searchParams.set('fn', fn);
-    url.searchParams.set('callback', cbName);
+    const body = { fn };
     args.forEach((a, i) => {
-      const val = typeof a === 'string' ? a : JSON.stringify(a);
-      url.searchParams.set('arg' + i, val);
+      body['arg' + i] = typeof a === 'string' ? a : JSON.stringify(a);
     });
 
-    const timeout = setTimeout(() => {
-      delete window[cbName];
-      const s = document.getElementById(cbName);
-      if (s) s.remove();
-      reject(new Error('Request timeout'));
-    }, 30000);
-
-    window[cbName] = (data) => {
-      clearTimeout(timeout);
-      delete window[cbName];
-      const s = document.getElementById(cbName);
-      if (s) s.remove();
-      resolve(data);
-    };
-
-    const script = document.createElement('script');
-    script.id = cbName;
-    script.src = url.toString();
-    script.onerror = () => {
-      clearTimeout(timeout);
-      delete window[cbName];
-      script.remove();
-      reject(new Error('Script load error'));
-    };
-    document.head.appendChild(script);
+    fetch(GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+    .then(r => r.text())
+    .then(t => {
+      try { resolve(JSON.parse(t)); }
+      catch(e) { reject(new Error('Parse error: ' + t.substring(0, 200))); }
+    })
+    .catch(reject);
   });
 }
 
